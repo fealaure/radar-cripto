@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Radar Cripto</title>
+<script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+  :root {
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7;
+    --good: #0ca30c; --critical: #d03b3b; --warning: #fab219;
+    --up-text: #006300; --down-text: #b02a2a;
+    --s1: #2a78d6; --s2: #eb6834; --s7: #6250d6;
+    --row-hover: #f0efec; --accent: #2a78d6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835;
+      --up-text: #0ca30c; --down-text: #e66767;
+      --s1: #3987e5; --s2: #d95926; --s7: #9085e9;
+      --row-hover: #242422; --accent: #3987e5;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink);
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; }
+  header { padding: 16px 20px 8px; display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: baseline; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+  .sub { color: var(--ink-2); font-size: 13px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 14px; padding: 8px 20px 12px; align-items: end; }
+  .controls label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--ink-2);
+    text-transform: uppercase; letter-spacing: 0.04em; }
+  select, input[type=text], button {
+    font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--axis);
+    border-radius: 6px; padding: 6px 10px; }
+  input[type=text] { width: 300px; max-width: 80vw; }
+  button { cursor: pointer; }
+  button:hover { background: var(--row-hover); }
+  .check { flex-direction: row !important; align-items: center; gap: 6px !important; text-transform: none !important;
+    font-size: 13px !important; letter-spacing: 0 !important; padding-bottom: 7px; }
+  main { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; padding: 0 20px 20px; }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
+  .card { background: var(--surface); border: 1px solid var(--grid); border-radius: 10px; overflow: hidden; }
+  .tablewrap { overflow: auto; max-height: calc(100vh - 190px); }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { padding: 7px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--grid); }
+  th:first-child, td:first-child { text-align: left; }
+  th { position: sticky; top: 0; background: var(--surface); font-size: 11px; font-weight: 600; color: var(--ink-2);
+    text-transform: uppercase; letter-spacing: 0.04em; cursor: pointer; user-select: none; z-index: 1; }
+  th.sorted::after { content: " ▾"; } th.sorted.asc::after { content: " ▴"; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--row-hover); }
+  tbody tr.sel { background: var(--row-hover); box-shadow: inset 3px 0 0 var(--accent); }
+  .sym { font-weight: 600; } .star { color: var(--warning); margin-left: 4px; }
+  .up { color: var(--up-text); } .down { color: var(--down-text); } .dim { color: var(--muted); }
+  .sig { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 18px; height: 18px; border-radius: 4px; display: inline-grid; place-items: center;
+    font-size: 10px; color: #fff; }
+  .dot.buy { background: var(--good); } .dot.sell { background: var(--critical); }
+  .dot.neu { background: var(--muted); }
+  .scorebar { display: inline-block; width: 64px; height: 6px; background: var(--grid); border-radius: 3px;
+    position: relative; vertical-align: middle; margin-right: 8px; }
+  .scorebar i { position: absolute; top: 0; height: 6px; border-radius: 3px; }
+  .scorebar::after { content: ""; position: absolute; left: 50%; top: -2px; width: 1px; height: 10px; background: var(--axis); }
+  .detail { padding: 14px 16px; }
+  .detail h2 { margin: 0; font-size: 18px; }
+  .dhead { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--ink-2); margin: 8px 0 4px; flex-wrap: wrap; }
+  .legend span::before { content: ""; display: inline-block; width: 14px; height: 2px; vertical-align: middle;
+    margin-right: 5px; background: var(--c); }
+  .ohlc { font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; min-height: 18px; }
+  #chart { height: 340px; } #rsichart { height: 130px; margin-top: 6px; }
+  .ctitle { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-2); margin-top: 10px; }
+  .reasons { list-style: none; margin: 10px 0 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
+  @media (max-width: 600px) { .reasons { grid-template-columns: 1fr; } }
+  .reasons li { display: flex; gap: 8px; font-size: 13px; }
+  .reasons b { width: 26px; text-align: right; font-variant-numeric: tabular-nums; }
+  .levels { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
+  .levels div { border: 1px solid var(--grid); border-radius: 8px; padding: 8px 10px; }
+  .levels small { display: block; color: var(--ink-2); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .levels strong { font-size: 15px; font-variant-numeric: tabular-nums; }
+  footer { padding: 0 20px 24px; color: var(--ink-2); font-size: 12px; max-width: 1000px; }
+  #wallet { margin: 0 20px 12px; font-size: 13px; color: var(--ink-2); }
+  #wallet .box { background: var(--surface); border: 1px solid var(--grid); border-radius: 10px; padding: 10px 14px;
+    display: flex; flex-wrap: wrap; gap: 6px 28px; align-items: baseline; }
+  #wallet strong { color: var(--ink); font-size: 15px; font-variant-numeric: tabular-nums; }
+  #wallet .warn { color: var(--ink); border-left: 3px solid var(--critical); padding-left: 10px; flex-basis: 100%; }
+  #wallet code { background: var(--row-hover); padding: 1px 5px; border-radius: 4px; }
+  .calc { margin-top: 16px; border-top: 1px solid var(--grid); padding-top: 12px; }
+  .calc h3 { margin: 0 0 2px; font-size: 14px; }
+  .calc .fields { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
+  @media (max-width: 600px) { .calc .fields, .levels { grid-template-columns: 1fr 1fr; } }
+  .calc label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--ink-2);
+    text-transform: uppercase; letter-spacing: 0.04em; }
+  .calc input { width: 100%; font-variant-numeric: tabular-nums; }
+  .calc .note { font-size: 12px; color: var(--ink-2); margin-top: 6px; }
+  .calc .warns { list-style: none; margin: 10px 0 0; padding: 0; font-size: 13px; }
+  .calc .warns li { border-left: 3px solid var(--warning); padding-left: 10px; margin-top: 4px; }
+  .calc .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center; }
+  .nowbox:not(:empty) { margin-top: 10px; border: 1px solid var(--grid); border-radius: 8px; padding: 8px 12px;
+    display: flex; flex-wrap: wrap; gap: 4px 24px; font-size: 13px; color: var(--ink-2); }
+  .nowbox strong { font-size: 15px; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .nowbox strong.up { color: var(--up-text); } .nowbox strong.down { color: var(--down-text); }
+  .calc a { color: var(--accent); }
+  .levels .hero { border-color: var(--accent); }
+  #status { font-size: 12px; color: var(--ink-2); padding-bottom: 8px; }
+  .err { color: var(--down-text); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Radar Cripto</h1>
+  <span class="sub">Triagem técnica de pares USDT · dados públicos Binance</span>
+</header>
+<div class="controls">
+  <label>Tempo gráfico
+    <select id="tf">
+      <option value="1h">1 hora</option>
+      <option value="4h" selected>4 horas</option>
+      <option value="1d">1 dia</option>
+      <option value="1w">1 semana</option>
+    </select>
+  </label>
+  <label>Universo
+    <select id="topn">
+      <option value="20">Top 20 por volume</option>
+      <option value="40" selected>Top 40 por volume</option>
+      <option value="80">Top 80 por volume</option>
+      <option value="0">Só minha lista</option>
+    </select>
+  </label>
+  <label>Minha lista (separar por vírgula)
+    <input type="text" id="mine" placeholder="BTC, ETH, SOL">
+  </label>
+  <label class="check"><input type="checkbox" id="onlymine"> Mostrar só minha lista</label>
+  <button id="refresh">Atualizar</button>
+  <span id="status"></span>
+</div>
+<div id="wallet"></div>
+<main>
+  <section class="card">
+    <div class="tablewrap">
+      <table>
+        <thead><tr id="head"></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+  <section class="card detail" id="detail">
+    <div class="sub">Clique numa linha para ver gráfico e composição do sinal.</div>
+  </section>
+</main>
+<footer>
+  <p><b>Como ler:</b> pontuação de −100 a +100 soma tendência (médias EMA 20/50/200), momentum (MACD), RSI 14,
+  Bandas de Bollinger e volume. Positivo = condições técnicas favorecem alta; negativo = favorecem baixa.
+  ATR% = volatilidade média por candle. Stop/alvo sugeridos = 2×ATR abaixo / 3×ATR acima do preço.</p>
+  <p><b>Aviso:</b> ferramenta de triagem, não recomendação de investimento. Indicadores técnicos falham com frequência,
+  principalmente em cripto. Decisão e risco são seus.</p>
+</footer>
+
+<script>
+const HOSTS = ["https://data-api.binance.vision", "https://api.binance.com"];
+const STABLE = new Set(["USDC","FDUSD","TUSD","USDP","DAI","BUSD","USD1","XUSD","EUR","EURI","AEUR","USDE","BFUSD","PYUSD","RLUSD","USDS","GBP","BRL","TRY","WBTC","WBETH","BNSOL"]);
+const $ = id => document.getElementById(id);
+const store = { get(k, d) { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
+                set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+
+async function api(path) {
+  let last;
+  for (const h of HOSTS) {
+    try { const r = await fetch(h + path); if (r.ok) return r.json(); last = new Error("HTTP " + r.status); }
+    catch (e) { last = e; }
+  }
+  throw last;
+}
+
+/* ---------- indicators ---------- */
+function ema(v, p) { const k = 2 / (p + 1), o = new Array(v.length).fill(null); if (v.length < p) return o;
+  let s = 0; for (let i = 0; i < p; i++) s += v[i]; o[p - 1] = s / p;
+  for (let i = p; i < v.length; i++) o[i] = v[i] * k + o[i - 1] * (1 - k); return o; }
+function rsi(c, p = 14) { const o = new Array(c.length).fill(null); if (c.length <= p) return o;
+  let g = 0, l = 0; for (let i = 1; i <= p; i++) { const d = c[i] - c[i - 1]; d > 0 ? g += d : l -= d; }
+  g /= p; l /= p; o[p] = l === 0 ? 100 : 100 - 100 / (1 + g / l);
+  for (let i = p + 1; i < c.length; i++) { const d = c[i] - c[i - 1];
+    g = (g * (p - 1) + Math.max(d, 0)) / p; l = (l * (p - 1) + Math.max(-d, 0)) / p;
+    o[i] = l === 0 ? 100 : 100 - 100 / (1 + g / l); } return o; }
+function macdHist(c) { const a = ema(c, 12), b = ema(c, 26);
+  const m = c.map((_, i) => a[i] != null && b[i] != null ? a[i] - b[i] : null);
+  const start = m.findIndex(x => x != null); if (start < 0) return m;
+  const sig = ema(m.slice(start), 9); return m.map((x, i) => i >= start && sig[i - start] != null ? x - sig[i - start] : null); }
+function atr(k, p = 14) { let a = null, trs = [];
+  for (let i = 1; i < k.length; i++) { const tr = Math.max(k[i].h - k[i].l, Math.abs(k[i].h - k[i - 1].c), Math.abs(k[i].l - k[i - 1].c));
+    if (a == null) { trs.push(tr); if (trs.length === p) a = trs.reduce((x, y) => x + y) / p; } else a = (a * (p - 1) + tr) / p; }
+  return a; }
+
+function analyze(k) {
+  const c = k.map(x => x.c), n = c.length, last = c[n - 1];
+  const e20 = ema(c, 20), e50 = ema(c, 50), e200 = ema(c, 200), r = rsi(c), h = macdHist(c);
+  const R = r[n - 1], H = h[n - 1], Hp = h[n - 2], E20 = e20[n - 1], E50 = e50[n - 1], E200 = e200[n - 1];
+  const w = c.slice(-20), mean = w.reduce((a, b) => a + b, 0) / w.length;
+  const sd = Math.sqrt(w.reduce((a, b) => a + (b - mean) ** 2, 0) / w.length);
+  const pctB = sd ? (last - (mean - 2 * sd)) / (4 * sd) : 0.5;
+  const vols = k.slice(-21, -1).map(x => x.v), vavg = vols.reduce((a, b) => a + b, 0) / (vols.length || 1);
+  const volR = vavg ? k[n - 2].v / vavg : 1;           // último candle fechado
+  const lastDir = Math.sign(k[n - 2].c - k[n - 2].o);
+  const A = atr(k), hi = Math.max(...k.slice(-90).map(x => x.h));
+  const parts = []; const add = (pts, txt) => parts.push({ pts, txt });
+  if (E200 != null) add(last > E200 ? 1 : -1, last > E200 ? "Preço acima da EMA 200" : "Preço abaixo da EMA 200");
+  if (E50 != null) add(E20 > E50 ? 1 : -1, E20 > E50 ? "EMA 20 acima da EMA 50" : "EMA 20 abaixo da EMA 50");
+  if (E200 != null) add(E50 > E200 ? 1 : -1, E50 > E200 ? "EMA 50 acima da EMA 200" : "EMA 50 abaixo da EMA 200");
+  if (H != null) { add(H > 0 ? 1 : -1, H > 0 ? "MACD positivo" : "MACD negativo");
+    if (Hp != null) add(H > Hp ? 1 : -1, H > Hp ? "Momentum acelerando" : "Momentum perdendo força"); }
+  if (R != null) { const p = R < 30 ? 2 : R < 40 ? 1 : R > 75 ? -2 : R > 68 ? -1 : 0;
+    add(p, `RSI ${R.toFixed(0)} — ${R < 30 ? "sobrevendido" : R < 40 ? "fraco, perto de sobrevenda" : R > 75 ? "sobrecomprado" : R > 68 ? "esticado" : "zona neutra"}`); }
+  add(pctB < 0.05 ? 1 : pctB > 0.95 ? -1 : 0, pctB < 0.05 ? "Na banda inferior de Bollinger" : pctB > 0.95 ? "Na banda superior de Bollinger" : "Dentro das Bandas de Bollinger");
+  add(volR > 1.5 ? lastDir : 0, volR > 1.5 ? `Volume ${volR.toFixed(1)}× a média em candle de ${lastDir >= 0 ? "alta" : "baixa"}` : `Volume normal (${volR.toFixed(1)}× a média)`);
+  const score = Math.round(parts.reduce((a, p) => a + p.pts, 0) / 9 * 100);
+  return { last, rsi: R, hist: H, histUp: H != null && Hp != null && H > Hp, e20, e50, e200, rsiArr: r,
+    trend: (E200 != null ? (last > E200 ? 1 : -1) : 0) + (E50 != null ? (E20 > E50 ? 1 : -1) : 0) + (E200 != null ? (E50 > E200 ? 1 : -1) : 0),
+    pctB, volR, atr: A, atrPct: A ? A / last * 100 : null, dd: (last / hi - 1) * 100, score, parts, short: n < 200 };
+}
+function signal(s) {
+  if (s >= 45) return { cls: "buy", ico: "▲", txt: "Compra forte" };
+  if (s >= 15) return { cls: "buy", ico: "△", txt: "Viés de compra" };
+  if (s <= -45) return { cls: "sell", ico: "▼", txt: "Venda forte" };
+  if (s <= -15) return { cls: "sell", ico: "▽", txt: "Viés de venda" };
+  return { cls: "neu", ico: "–", txt: "Neutro" };
+}
+
+/* ---------- state ---------- */
+let data = [], sortKey = "score", sortAsc = false, selected = null, loading = false, charts = [];
+const COLS = [
+  ["sym", "Ativo"], ["pos", "Posição"], ["pnl", "L/P agora"], ["price", "Preço"], ["chg", "24h"], ["score", "Sinal"], ["rsi", "RSI"],
+  ["trend", "Tendência"], ["hist", "MACD"], ["volR", "Volume"], ["atrPct", "ATR%"], ["dd", "Do topo 90"], ["qv", "Vol 24h"],
+];
+const fmtP = p => p >= 1000 ? p.toLocaleString("pt-BR", { maximumFractionDigits: 0 }) : p >= 1 ? p.toLocaleString("pt-BR", { maximumFractionDigits: 2 }) : p.toPrecision(4).replace(".", ",");
+const fmtPct = (x, d = 1) => x == null ? "–" : (x > 0 ? "+" : "") + x.toFixed(d).replace(".", ",") + "%";
+const fmtVol = v => v >= 1e9 ? (v / 1e9).toFixed(1).replace(".", ",") + " bi" : (v / 1e6).toFixed(0) + " mi";
+const DOLLAR = new Set(["USDT","USDC","FDUSD","TUSD","USDP","DAI","BUSD","USD1"]);
+let wallet = new Map();   // ativo -> { qty, value } vindo da conta Binance (via server.py)
+const mineSet = () => new Set([...wallet.keys(), ...$("mine").value.toUpperCase().split(/[\s,;]+/).map(s => s.replace(/USDT$/, "")).filter(s => /^[A-Z0-9]{2,12}$/.test(s))]);
+const fmtUsd = v => v.toLocaleString("pt-BR", { maximumFractionDigits: v >= 100 ? 0 : 2 });
+
+async function loadWallet(bySym) {
+  const el = $("wallet"); wallet = new Map();
+  let p; try { const r = await fetch("/api/portfolio"); p = await r.json(); } catch { el.innerHTML = ""; return; }
+  if (!p.configured) { el.innerHTML = `<div class="box">Carteira Binance não conectada. Copie <code>.env.example</code> para <code>.env</code> e preencha chave somente-leitura.</div>`; return; }
+  if (p.error) { el.innerHTML = `<div class="box"><span class="warn"></span></div>`; el.querySelector(".warn").textContent = "Erro ao ler carteira: " + p.error; return; }
+  let total = 0, cash = 0, semPreco = 0;
+  for (const b of p.balances) { if (!/^[A-Z0-9]{1,12}$/.test(b.asset)) continue;
+    const isCash = DOLLAR.has(b.asset), t = bySym.get(b.asset + "USDT");
+    const value = isCash ? b.qty : t ? b.qty * +t.lastPrice : null;
+    if (value == null) { semPreco++; continue; }
+    total += value; if (isCash) cash += value;
+    else if (value >= 1) wallet.set(b.asset, { qty: b.qty, value, free: b.free ?? b.qty }); }
+  const perms = [p.keyCanTrade && "trade", p.keyCanWithdraw && "saque"].filter(Boolean);
+  el.innerHTML = `<div class="box"><span>Carteira spot estimada <strong>${fmtUsd(total)} USDT</strong></span>
+    <span>Caixa em stablecoins <strong>${fmtUsd(cash)} USDT</strong></span>
+    <span>${wallet.size} ativos com par USDT${semPreco ? ` · ${semPreco} sem preço` : ""}</span>
+    <span>${perms.length ? "" : p.keyCanTrade === false ? "Chave: somente leitura ✓" : "Permissões da chave não verificadas"}</span>
+    ${perms.length ? `<span class="warn">Atenção: esta chave API tem ${perms.join(" e ")} habilitado. Dashboard só precisa de leitura — desmarque essas permissões na Binance.</span>` : ""}</div>`;
+}
+
+async function load() {
+  if (loading) return; loading = true;
+  const tf = $("tf").value, topn = +$("topn").value;
+  $("status").className = ""; $("status").textContent = "Carregando…";
+  try {
+    const tick = (await api("/api/v3/ticker/24hr")).filter(t => /^[A-Z0-9]+USDT$/.test(t.symbol) && +t.quoteVolume > 0);
+    const bySym = new Map(tick.map(t => [t.symbol, t]));
+    await loadWallet(bySym);
+    const mine = mineSet();
+    const top = tick.filter(t => { const b = t.symbol.slice(0, -4); return !STABLE.has(b) && !/(UP|DOWN|BULL|BEAR)$/.test(b)
+        && (+t.highPrice - +t.lowPrice) / +t.lastPrice > 0.004; })   // faixa 24h mínima: tira stablecoins
+      .sort((a, b) => b.quoteVolume - a.quoteVolume).slice(0, topn).map(t => t.symbol);
+    const syms = [...new Set([...top, ...[...mine].map(m => m + "USDT").filter(s => bySym.has(s))])];
+    const out = []; let i = 0, done = 0;
+    await Promise.all(Array.from({ length: 6 }, async () => {
+      while (i < syms.length) { const s = syms[i++];
+        try {
+          const raw = await api(`/api/v3/klines?symbol=${s}&interval=${tf}&limit=300`);
+          const k = raw.map(r => ({ t: r[0] / 1000, o: +r[1], h: +r[2], l: +r[3], c: +r[4], v: +r[5] }));
+          if (k.length >= 30) { const t = bySym.get(s), a = analyze(k);
+            out.push({ sym: s.slice(0, -4), pair: s, pos: wallet.get(s.slice(0, -4))?.value ?? null, price: +t.lastPrice, chg: +t.priceChangePercent, qv: +t.quoteVolume, k, ...a }); }
+        } catch {}
+        $("status").textContent = `Carregando… ${++done}/${syms.length}`; }
+    }));
+    data = out;
+    $("status").textContent = `${out.length} ativos · ${tf} · atualizado ${new Date().toLocaleTimeString("pt-BR")}`;
+    render(); if (selected && data.find(d => d.sym === selected)) showDetail(selected);
+    loadCosts();
+  } catch (e) { $("status").className = "err"; $("status").textContent = "Falha ao buscar dados da Binance: " + e.message; }
+  loading = false;
+}
+
+function render() {
+  const mine = mineSet(), only = $("onlymine").checked;
+  $("head").innerHTML = "";
+  for (const [k, label] of COLS) { const th = document.createElement("th"); th.textContent = label;
+    if (k === sortKey) th.className = "sorted" + (sortAsc ? " asc" : "");
+    th.onclick = () => { sortAsc = k === sortKey ? !sortAsc : k === "sym"; sortKey = k; render(); }; $("head").append(th); }
+  for (const d of data) d.pnl = pnlNow(d)?.v ?? null;
+  const rows = data.filter(d => !only || mine.has(d.sym)).sort((a, b) => {
+    const x = a[sortKey], y = b[sortKey]; const r = typeof x === "string" ? x.localeCompare(y) : (x ?? -1e9) - (y ?? -1e9); return sortAsc ? r : -r; });
+  const tb = $("rows"); tb.innerHTML = "";
+  for (const d of rows) { const s = signal(d.score), tr = document.createElement("tr");
+    if (d.sym === selected) tr.className = "sel";
+    const w = Math.abs(d.score) / 2, left = d.score >= 0 ? 50 : 50 - w;
+    const trendTxt = d.trend >= 3 ? "Alta" : d.trend > 0 ? "Alta fraca" : d.trend <= -3 ? "Baixa" : d.trend < 0 ? "Baixa fraca" : "Lateral";
+    tr.innerHTML = `
+      <td><span class="sym">${d.sym}</span>${mine.has(d.sym) ? '<span class="star" title="Na minha lista">★</span>' : ""}</td>
+      <td>${d.pos == null ? '<span class="dim">–</span>' : fmtUsd(d.pos)}</td>
+      <td>${d.pnl == null ? '<span class="dim">–</span>' : `<span class="${d.pnl >= 0 ? "up" : "down"}">${d.pnl >= 0 ? "+" : "−"}${fmtUsd(Math.abs(d.pnl))} <span class="dim">${fmtPct(pnlNow(d).pct)}</span></span>`}</td>
+      <td>${fmtP(d.price)}</td>
+      <td class="${d.chg >= 0 ? "up" : "down"}">${fmtPct(d.chg)}</td>
+      <td><span class="sig"><span class="scorebar"><i style="left:${left}%;width:${w}%;background:var(--${d.score >= 0 ? "good" : "critical"})"></i></span><span class="dot ${s.cls}">${s.ico}</span>${s.txt} <span class="dim">${d.score > 0 ? "+" : ""}${d.score}</span></span></td>
+      <td>${d.rsi == null ? "–" : d.rsi.toFixed(0)}${d.rsi < 30 ? ' <span class="dim">sobrevend.</span>' : d.rsi > 70 ? ' <span class="dim">sobrecomp.</span>' : ""}</td>
+      <td>${trendTxt}</td>
+      <td>${d.hist == null ? "–" : (d.hist > 0 ? "Positivo" : "Negativo") + (d.histUp ? " ↑" : " ↓")}</td>
+      <td>${d.volR.toFixed(1).replace(".", ",")}×</td>
+      <td>${d.atrPct == null ? "–" : d.atrPct.toFixed(1).replace(".", ",") + "%"}</td>
+      <td>${fmtPct(d.dd, 0)}</td>
+      <td class="dim">${fmtVol(d.qv)}</td>`;
+    tr.onclick = () => { selected = d.sym; render(); showDetail(d.sym); };
+    tb.append(tr); }
+  if (!rows.length && !loading) tb.innerHTML = `<tr><td colspan="${COLS.length}" class="dim" style="text-align:center;padding:24px">Nenhum ativo. Ajuste universo ou lista.</td></tr>`;
+}
+
+/* Lucro/prejuízo se vender toda a posição ao preço atual (líquido de taxa) */
+const costMap = {};
+function pnlNow(d) {
+  const w = wallet.get(d.sym), st = calcState[d.sym];
+  const avg = st?.manualAvg ? num(st.avg) : costMap[d.sym], fee = (st ? num(st.fee) : 0.1) || 0;
+  if (!w || !(avg > 0)) return null;
+  const net = w.qty * d.price * (1 - fee / 100), basis = avg * w.qty;
+  return { qty: w.qty, net, v: net - basis, pct: (net / basis - 1) * 100 };
+}
+async function loadCosts() {
+  await Promise.all([...wallet.keys()].map(async sym => { const c = await pairCost(sym + "USDT"); if (c.avgCost) costMap[sym] = c.avgCost; }));
+  render(); if (selected && $("c-now")) updateNowBox(data.find(x => x.sym === selected));
+}
+function updateNowBox(d) {
+  const el = $("c-now"); if (!el || !d) return;
+  const p = pnlNow(d);
+  if (!p) { el.textContent = wallet.has(d.sym) ? "Informe preço médio para ver lucro/prejuízo da posição." : ""; return; }
+  el.innerHTML = `<span>Vender tudo agora <span class="dim">(${p.qty.toLocaleString("pt-BR", { maximumFractionDigits: 8 })} ${d.sym} a ${fmtP(d.price)})</span></span>
+    <span>Recebe <strong>${fmtUsd(p.net)} USDT</strong></span>
+    <span>${p.v >= 0 ? "Lucro" : "Prejuízo"} <strong class="${p.v >= 0 ? "up" : "down"}">${p.v >= 0 ? "+" : "−"}${fmtUsd(Math.abs(p.v))} USDT (${fmtPct(p.pct)})</strong></span>`;
+}
+
+function cssv(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+function showDetail(sym) {
+  const d = data.find(x => x.sym === sym); if (!d) return;
+  charts.forEach(c => c.remove()); charts = [];
+  const s = signal(d.score), stop = d.atr ? d.last - 2 * d.atr : null, alvo = d.atr ? d.last + 3 * d.atr : null;
+  $("detail").innerHTML = `
+    <div class="dhead"><h2>${d.sym}<span class="dim" style="font-weight:400"> / USDT · ${$("tf").value}</span></h2>
+      <span class="sig"><span class="dot ${s.cls}">${s.ico}</span><b>${s.txt}</b> <span class="dim">${d.score > 0 ? "+" : ""}${d.score}</span></span></div>
+    <div class="legend"><span style="--c:var(--s1)">EMA 20</span><span style="--c:var(--s2)">EMA 50</span><span style="--c:var(--s7)">EMA 200</span></div>
+    <div class="ohlc" id="ohlc"></div>
+    <div id="chart"></div>
+    <div class="ctitle">RSI 14 <span class="dim" style="text-transform:none">· abaixo de 30 sobrevendido, acima de 70 sobrecomprado</span></div>
+    <div id="rsichart"></div>
+    <div class="levels">
+      <div><small>Preço</small><strong>${fmtP(d.last)}</strong></div>
+      <div><small>Stop 2×ATR</small><strong>${stop ? fmtP(stop) : "–"}</strong></div>
+      <div><small>Alvo 3×ATR</small><strong>${alvo ? fmtP(alvo) : "–"}</strong></div>
+      <div><small>ATR por candle</small><strong>${d.atrPct ? d.atrPct.toFixed(1).replace(".", ",") + "%" : "–"}</strong></div>
+    </div>
+    <div class="ctitle">Composição do sinal${d.short ? ' <span class="dim" style="text-transform:none">· histórico curto, EMA 200 indisponível</span>' : ""}</div>
+    <ul class="reasons">${d.parts.map(p => `<li><b class="${p.pts > 0 ? "up" : p.pts < 0 ? "down" : "dim"}">${p.pts > 0 ? "+" : ""}${p.pts}</b><span>${p.txt}</span></li>`).join("")}</ul>
+    <div class="calc" id="calc"></div>`;
+  const base = { layout: { background: { color: "transparent" }, textColor: cssv("--muted"), fontSize: 11 },
+    grid: { vertLines: { color: cssv("--grid") }, horzLines: { color: cssv("--grid") } },
+    rightPriceScale: { borderColor: cssv("--axis"), minimumWidth: 84 }, timeScale: { borderColor: cssv("--axis"), timeVisible: true },
+    crosshair: { mode: 0 }, autoSize: true };
+  const axisFmt = dec => ({ localization: { priceFormatter: p => p.toLocaleString("pt-BR", { minimumFractionDigits: dec, maximumFractionDigits: dec }) } });
+  const c1 = LightweightCharts.createChart($("chart"), { ...base, ...axisFmt(d.last >= 100 ? 2 : d.last >= 1 ? 4 : 6) });
+  const up = cssv("--good"), dn = cssv("--critical");
+  const pf = { type: "price", precision: d.last >= 100 ? 2 : d.last >= 1 ? 4 : 6, minMove: d.last >= 100 ? 0.01 : d.last >= 1 ? 0.0001 : 0.000001 };
+  const cs = c1.addCandlestickSeries({ upColor: up, downColor: dn, borderUpColor: up, borderDownColor: dn, wickUpColor: up, wickDownColor: dn, priceFormat: pf });
+  cs.setData(d.k.map(x => ({ time: x.t, open: x.o, high: x.h, low: x.l, close: x.c })));
+  const line = (arr, col) => { const l = c1.addLineSeries({ color: cssv(col), lineWidth: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, priceFormat: pf });
+    l.setData(arr.map((v, i) => v == null ? null : { time: d.k[i].t, value: v }).filter(Boolean)); };
+  line(d.e20, "--s1"); line(d.e50, "--s2"); line(d.e200, "--s7");
+  const c2 = LightweightCharts.createChart($("rsichart"), { ...base, ...axisFmt(0) });
+  const rs = c2.addLineSeries({ color: cssv("--s1"), lineWidth: 2, priceLineVisible: false, autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }) });
+  rs.setData(d.rsiArr.map((v, i) => v == null ? null : { time: d.k[i].t, value: v }).filter(Boolean));
+  for (const lv of [30, 70]) rs.createPriceLine({ price: lv, color: cssv("--axis"), lineWidth: 1, lineStyle: 2, axisLabelVisible: true });
+  let lock = false;
+  const sync = (a, b) => a.timeScale().subscribeVisibleLogicalRangeChange(r => { if (lock || !r) return; lock = true; b.timeScale().setVisibleLogicalRange(r); lock = false; });
+  c1.timeScale().setVisibleLogicalRange({ from: d.k.length - 120, to: d.k.length + 3 });
+  c2.timeScale().setVisibleLogicalRange({ from: d.k.length - 120, to: d.k.length + 3 });
+  sync(c1, c2); sync(c2, c1);
+  const byT = new Map(d.k.map((x, i) => [x.t, i]));
+  const show = i => { const x = d.k[i], r = d.rsiArr[i];
+    $("ohlc").textContent = `${new Date(x.t * 1000).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}  ·  A ${fmtP(x.o)}  Máx ${fmtP(x.h)}  Mín ${fmtP(x.l)}  F ${fmtP(x.c)}  (${fmtPct((x.c / x.o - 1) * 100)})  ·  RSI ${r == null ? "–" : r.toFixed(0)}`; };
+  show(d.k.length - 1);
+  const onMove = p => show(p.time != null && byT.has(p.time) ? byT.get(p.time) : d.k.length - 1);
+  c1.subscribeCrosshairMove(onMove); c2.subscribeCrosshairMove(onMove);
+  charts = [c1, c2];
+  initCalc(d, cs);
+}
+
+/* ---------- calculadora de venda por meta de lucro ---------- */
+const calcState = {}, filterCache = {};
+// Aceita padrão brasileiro (1.234,56) e também ponto decimal simples (1234.56)
+const num = v => { let t = String(v).replace(/\s/g, ""); if (t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
+  const n = parseFloat(t); return isFinite(n) ? n : NaN; };
+const br = t => String(t).replace(".", ",");   // número em texto -> vírgula decimal, como na Binance
+const decimals = step => (String(step).replace(/0+$/, "").split(".")[1] || "").length;
+async function pairFilters(pair) {
+  if (filterCache[pair]) return filterCache[pair];
+  try { const fs = (await api(`/api/v3/exchangeInfo?symbol=${pair}`)).symbols[0].filters, g = t => fs.find(x => x.filterType === t) || {};
+    return filterCache[pair] = { tick: g("PRICE_FILTER").tickSize, step: g("LOT_SIZE").stepSize, minQty: +g("LOT_SIZE").minQty || 0,
+      minNotional: +(g("NOTIONAL").minNotional ?? g("MIN_NOTIONAL").minNotional ?? 0), maxMult: +g("PERCENT_PRICE_BY_SIDE").askMultiplierUp || null };
+  } catch { return null; }
+}
+async function pairCost(pair) { try { return await (await fetch("/api/cost?symbol=" + pair)).json(); } catch { return { error: "servidor local indisponível" }; } }
+
+async function initCalc(d, cs) {
+  const box = $("calc"), w = wallet.get(d.sym);
+  const st = calcState[d.sym] ??= { avg: "", pct: "25", qty: "", fee: "0,1", manualAvg: false, manualQty: false };
+  box.innerHTML = `
+    <h3>Calculadora de venda</h3>
+    <div class="sub">Preço da ordem limite para atingir meta de lucro líquido sobre preço médio de compra.</div>
+    <div class="fields">
+      <label>Preço médio (USDT)<input type="text" inputmode="decimal" id="c-avg"></label>
+      <label>Meta de lucro %<input type="text" inputmode="decimal" id="c-pct"></label>
+      <label>Quantidade ${d.sym}<input type="text" inputmode="decimal" id="c-qty"></label>
+      <label>Taxa %<input type="text" inputmode="decimal" id="c-fee"></label>
+    </div>
+    <div class="note" id="c-src">Buscando preço médio…</div>
+    <div class="nowbox" id="c-now"></div>
+    <div class="levels">
+      <div class="hero"><small>Preço limite</small><strong id="c-price">–</strong></div>
+      <div><small>Quantidade</small><strong id="c-q">–</strong></div>
+      <div><small>Recebe líquido</small><strong id="c-net">–</strong></div>
+      <div><small>Lucro</small><strong id="c-profit">–</strong></div>
+    </div>
+    <ul class="warns" id="c-warns"></ul>
+    <div class="actions">
+      <button id="c-cp">Copiar preço</button><button id="c-cq">Copiar quantidade</button>
+      <a href="https://www.binance.com/pt-BR/trade/${d.sym}_USDT?type=spot" target="_blank" rel="noopener">Abrir ${d.sym}/USDT na Binance ↗</a>
+      <span class="dim" id="c-msg"></span>
+    </div>`;
+  const el = id => box.querySelector("#" + id);
+  let F = null, out = { price: "", qty: "" }, line = null;
+  const recalc = () => {
+    const avg = num(st.avg), pct = num(st.pct), fee = num(st.fee) || 0, qty = num(st.qty), warns = [];
+    if (line) { cs.removePriceLine(line); line = null; }
+    out = { price: "", qty: "" };
+    const set = (p, q, n, l) => { el("c-price").textContent = p; el("c-q").textContent = q; el("c-net").textContent = n; el("c-profit").textContent = l; };
+    if (!(avg > 0) || !isFinite(pct)) { set("–", "–", "–", "–"); warns.push("Informe preço médio e meta de lucro."); }
+    else {
+      const tick = F ? +F.tick : 0, pd = F ? decimals(F.tick) : 8, raw = avg * (1 + pct / 100) / (1 - fee / 100);
+      const price = tick ? Math.ceil(raw / tick - 1e-9) * tick : raw;
+      out.price = br(price.toFixed(pd));
+      line = cs.createPriceLine({ price, color: cssv("--ink-2"), lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: "Alvo" });
+      const dist = (price / d.last - 1) * 100;
+      if (price <= d.last) warns.push(`Preço alvo (${out.price}) não está acima do preço atual (${fmtP(d.last)}): ordem limite de venda executaria imediatamente.`);
+      if (F && F.maxMult && price > d.last * F.maxMult) warns.push(`Binance rejeita ordem de venda acima de ${F.maxMult}× o preço atual.`);
+      if (qty > 0) {
+        const step = F ? +F.step : 0, qd = F ? decimals(F.step) : 8, q = step ? Math.floor(qty / step + 1e-9) * step : qty;
+        out.qty = br(q.toFixed(qd));
+        const gross = price * q, net = gross * (1 - fee / 100), basis = avg * q, profit = net - basis;
+        set(out.price + " USDT", out.qty, fmtUsd(net) + " USDT", `${profit >= 0 ? "+" : ""}${fmtUsd(profit)} USDT (${fmtPct(profit / basis * 100)})`);
+        if (F && q < F.minQty) warns.push(`Quantidade abaixo do mínimo do par (${br(F.minQty)}).`);
+        if (F && gross < F.minNotional) warns.push(`Valor da ordem (${fmtUsd(gross)} USDT) abaixo do mínimo da Binance (${F.minNotional} USDT).`);
+        if (w && q > w.free * 1.0000001) warns.push(`Só ${br(w.free)} ${d.sym} livre em spot. Resto está em Earn ou preso em ordens abertas: resgatar antes de criar ordem.`);
+      } else { set(out.price + " USDT", "–", "–", "–"); warns.push("Informe quantidade a vender."); }
+      el("c-price").title = `${fmtPct(dist)} em relação ao preço atual`;
+      if (price > d.last) warns.unshift(`Alvo ${fmtPct(dist)} acima do preço atual. Ordem fica aberta até mercado chegar lá.`);
+    }
+    updateNowBox(d);
+    const ul = el("c-warns"); ul.innerHTML = ""; for (const t of warns) { const li = document.createElement("li"); li.textContent = t; ul.append(li); }
+  };
+  for (const [id, key, flag] of [["c-avg", "avg", "manualAvg"], ["c-pct", "pct"], ["c-qty", "qty", "manualQty"], ["c-fee", "fee"]]) {
+    el(id).value = st[key];
+    el(id).oninput = e => { st[key] = e.target.value; if (flag) st[flag] = true; recalc(); };
+  }
+  const copy = (txt, what) => { if (!txt) return; navigator.clipboard.writeText(txt).then(() => { el("c-msg").textContent = `${what} copiado: ${txt}`; }, () => { el("c-msg").textContent = "Não foi possível copiar."; }); };
+  el("c-cp").onclick = () => copy(out.price, "Preço"); el("c-cq").onclick = () => copy(out.qty, "Quantidade");
+  recalc();
+
+  const [f, c] = await Promise.all([pairFilters(d.pair), pairCost(d.pair)]);
+  if (!box.isConnected) return;            // painel foi redesenhado enquanto buscava
+  F = f;
+  if (w && !st.manualQty) { st.qty = br(w.qty); el("c-qty").value = st.qty; }
+  const src = el("c-src"), fmtQ = q => q.toLocaleString("pt-BR", { maximumFractionDigits: 8 });
+  if (c.avgCost) {
+    costMap[d.sym] = c.avgCost;
+    if (!st.manualAvg) { st.avg = br(+c.avgCost.toPrecision(8)); el("c-avg").value = st.avg; }
+    const gap = w && c.trackedQty < w.qty * 0.98;
+    src.textContent = `Preço médio do histórico: ${fmtP(c.avgCost)} USDT · ${c.trades} trades spot e ${c.converts || 0} conversões cobrindo ${fmtQ(c.trackedQty)} ${d.sym}`
+      + (gap ? ` de ${fmtQ(w.qty)} na carteira. Resto veio de fora (depósito, outro par, compra há mais de 24 meses) — ajuste preço médio à mão se precisar.` : ".")
+      + (st.manualAvg ? " Usando valor digitado." : "");
+  } else if (c.configured === false) src.textContent = "Carteira não conectada: digite preço médio e quantidade.";
+  else if (c.error) src.textContent = "Não foi possível ler histórico (" + c.error + "). Digite preço médio.";
+  else src.textContent = `Sem compras de ${d.sym} no histórico spot ou Convert (24 meses). Se veio de depósito ou outro par, digite preço médio.`;
+  if (c.convertError) src.textContent += ` Histórico de Convert não lido (${c.convertError}).`;
+  recalc();
+}
+
+/* ---------- wiring ---------- */
+$("tf").value = store.get("tf", "4h"); $("topn").value = store.get("topn", "40"); $("mine").value = store.get("mine", "");
+$("onlymine").checked = store.get("onlymine", "0") === "1";
+$("tf").onchange = () => { store.set("tf", $("tf").value); load(); };
+$("topn").onchange = () => { store.set("topn", $("topn").value); load(); };
+$("mine").onchange = () => { store.set("mine", $("mine").value); load(); };
+$("onlymine").onchange = () => { store.set("onlymine", $("onlymine").checked ? "1" : "0"); render(); };
+$("refresh").onclick = load;
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => selected && showDetail(selected));
+render(); load(); setInterval(load, 120000);
+</script>
+</body>
+</html>
